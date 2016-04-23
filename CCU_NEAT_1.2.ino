@@ -23,10 +23,10 @@ LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);//addr,en,rw,rs,d4
 unsigned char pms3003[2];//store pms3003 data
 
 #define esp_baudrate 115200
-String SSID = "NEAT_2.4G";
-String PASS = "221b23251";
+String SSID = "WIFI SSID";
+String PASS = "WIFI PASS";
 String IP = "184.106.153.149"; //ThingSpeak IP
-String GET = "GET /update?key=QT2W2YQ9S6K0Q2L2"; //ThingSpeak update key
+String GET = "GET /update?key=_______________"; //ThingSpeak update key
 // 使用 GET 傳送資料的格式  GET /update?key=[THINGSPEAK_KEY]&field1=[data 1]&filed2=[data 2]...;
 long start_time;//for esp command retry
 int i;
