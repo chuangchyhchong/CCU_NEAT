@@ -9,22 +9,32 @@
  *
  */
 
+//include library
 #include "DHT.h"
-#define _dhtpin         13
-#define _dhttype       DHT22
-DHT dht11(_dhtpin,_dhttype);
-
 #include <SoftwareSerial.h>//這個library 同時只能begin一個serial port
-SoftwareSerial esp(3,2); //Digital_3 as Rx ,Digital_2 as Tx
-SoftwareSerial pms(4,5);
-
 #include <LiquidCrystal_I2C.h>
+
+
+//define pin usage
+#define _dhtpin 13
+#define PMS_TX  5
+#define PMS_RX  4
+#define ESP_RX  3
+#define ESP_TX  2
+
+//define
+#define _dhttype       DHT22
+#define pms_baudrate  9600
+#define esp_baudrate 115200
+
+// variable declare
+DHT dht11(_dhtpin,_dhttype);
+SoftwareSerial esp(ESP_RX, ESP_TX); //Digital_3 as Rx ,Digital_2 as Tx
+SoftwareSerial pms(PMS_RX, PMS_TX);
 LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);//addr,en,rw,rs,d4,d5,d6,d7,bl, blpol
 
-#define pms_baudrate  9600
-unsigned char pms3003[2];//store pms3003 data
 
-#define esp_baudrate 115200
+
 String SSID = "NEAT_2.4G";
 String PASS = "221b23251";
 String IP = "184.106.153.149"; //ThingSpeak IP
@@ -35,24 +45,13 @@ int i;
 int esp_com_timeout;//esp8266 command timeout
 int esp_com_error_times;
 
-String do_pms(){//get pms3003 data
-  pms.begin(pms_baudrate);
-  while(1){
-    pms.readBytes(pms3003,2);
-    if(pms3003[0]==0x42 || pms3003[1]==0x4d){//尋找每段資料的開頭
-      for(i=0;i<5;i++)
-        pms.readBytes(pms3003,2);
-      break;
-    }
-  }
-  esp.begin(esp_baudrate);
-  return (String)pms3003[1];
-}
-void lcd_print(String Str,int column,int row){//print word on lcd,column 0~15,row 0~1
+void lcd_print(String Str,int column,int row)//print word on lcd,column 0~15,row 0~1
+{
   lcd.setCursor(column,row);
   lcd.print(Str);
 }
-void lcd_start_information(){
+void lcd_start_information(void)
+{
   lcd.backlight();//背光開 //lcd.noBacllight(); //背光關
   lcd.clear();
   lcd_print("Hello!",0,0);
@@ -62,13 +61,33 @@ void lcd_start_information(){
     delay(1000);
   }
 }
-void sendtoesp(String cmd){//send cmd to esp8266
-  Serial.println("SEND: "+cmd);
-  esp.print(cmd+"\r\n");
+String read_pm25(void) //get pm2.5 data
+{
+    unsigned char pms3003[2];//store pms3003 data
+    long read_timeout = millis();
+    pms.begin(pms_baudrate);
+
+    while(millis() - read_timeout >= 3000){
+        pms.readBytes(pms3003,2);
+        if(pms3003[0]==0x42 || pms3003[1]==0x4d){//尋找每段資料的開頭
+            for(i=0;i<5;i++)
+                pms.readBytes(pms3003,2);
+            break;
+        }
+    }
+    esp.begin(esp_baudrate);
+    return (String)pms3003[1];
 }
-void test_esp(){
+void sendtoesp(String cmd)  //send cmd to esp8266
+{
+    Serial.println("SEND: "+cmd);
+    esp.print(cmd+"\r\n");
+}
+void test_esp(void)
+{
   lcd.clear();
-  lcd_print("Wait ESP AT RESP",0,0);
+  lcd_print("Test ESP8266",0,0);
+  lcd_print("Waiting resp",0,1);
   start_time=0;
   do{
     if(millis()-start_time>10000 || start_time==0){
@@ -78,7 +97,8 @@ void test_esp(){
   }while(  esp.available()>0  &&  (!esp.find("OK")) );
   Serial.println("AT OK");
 }
-void ConnectWiFi(){
+void ConnectWiFi(void)
+{
   sendtoesp("AT+CWJAP?");
   esp_com_timeout = millis();
   esp_com_error_times = 0;
@@ -119,7 +139,8 @@ void ConnectWiFi(){
     }
   }
 }
-void build_TCP(){
+void build_TCP(void)
+{
   esp_com_timeout = 0;
   do {
     if (millis() - esp_com_timeout >= 5 * 1000 || esp_com_timeout == 0) {
@@ -128,52 +149,3 @@ void build_TCP(){
     }
   } while (!esp.find("CONN"));
 }
-void send_update_command(){
-  String Update_command = GET+"&field1="+(String)dht11.readTemperature()+
-                              "&field2="+(String)dht11.readHumidity()+
-                              "&field3="+(String)do_pms()+"\r\n";
-  esp_com_timeout = 3;
-  while (1) {
-    sendtoesp("AT+CIPSEND=" + (String)Update_command.length());
-    delay(500);
-    esp.print(Update_command);
-    delay(500);
-    esp_com_timeout--;
-
-    if (esp.find("IPD") || esp_com_timeout <= 0) {
-      Serial.println("Successfully update to Thingspeak.");
-      break;
-    }
-  }
-}
-void lcd_sensor_value(){
-  lcd.clear();
-  String PM_LCD = "PM2.5: " + (String)do_pms() + "ug/m3";
-  lcd_print(PM_LCD,0,0);
-  String TEMP_HUMI = "Temp:" + (String)dht11.readTemperature();
-  lcd_print(TEMP_HUMI,0,1);
-  TEMP_HUMI = "  Hmui:"+(String)dht11.readHumidity();
-  lcd_print(TEMP_HUMI,7,1);
-}
-void setup(){
-  Serial.begin(9600);//arduino to PC
-  esp.begin(esp_baudrate);
-  lcd.begin(16,2);
-
-  lcd_start_information();//print start information on lcd
-  test_esp();
-  dht11.begin();
-}
-void loop(){
-  lcd_print("Connecting WiFi ",0,1);
-  ConnectWiFi();//Connect WiFi
-
-  lcd_print("Building TCP....",0,1);
-  build_TCP();//Build tcp
-
-  lcd_print("Sending to TP...",0,1);
-  send_update_command();//Tell to TCP server how many bytes to send
-  lcd_sensor_value();//print sensor value on lcd
-  delay(60000);//every 60s to update data
-}
-
